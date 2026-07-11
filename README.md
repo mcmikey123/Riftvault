@@ -53,13 +53,12 @@ aggregate most-wanted list.
 table (idempotent upsert; weekly cron recommended) and seeds product
 fixtures.
 
-> **Verify on first run:** RiftScribe's live OpenAPI spec
-> (`https://riftscribe.gg/openapi.json`) was not reachable from the sandbox
-> this client was written in, so `apps/server/src/lib/cardSource/riftscribe.ts`
-> probes several endpoint shapes and maps fields tolerantly. Watch the log
-> line `[riftscribe] using list endpoint: …`, spot-check a few cards, and
-> tighten `mapCard()` against the real schema if needed. Full payloads are
-> kept in `cards.raw_json`, so re-mapping is lossless.
+> The client was verified against RiftScribe's live OpenAPI spec on
+> 2026-07-11: `GET /api/cards` paginates via `limit` (max 200) + `offset`
+> and returns a bare JSON array. Alt-art variants share a collector number;
+> the base printing wins (the schema is `UNIQUE(set_code, collector_number)`).
+> Full payloads are kept in `cards.raw_json`, so re-mapping is lossless if
+> the API changes — `test/riftscribeMap.test.ts` pins the expected shape.
 
 Fallback source: Riot's card gallery JSON, stubbed behind the same
 `CardSource` interface (`CARD_SOURCE=riot`) — implement
