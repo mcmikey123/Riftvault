@@ -142,3 +142,19 @@ const sources: DeckImportSource[] = [new PiltoverArchiveSource()];
 export function findImportSource(url: string): DeckImportSource | null {
   return sources.find((s) => s.matches(url)) ?? null;
 }
+
+/**
+ * Extract deck-page links from a PA listing page (deck library / meta page),
+ * in page order, deduped. Pure — exported for unit tests.
+ */
+export function extractDeckLinks(html: string, origin: string): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const m of html.matchAll(new RegExp(`/decks/view/(${UUID})`, 'g'))) {
+    const id = m[1]!;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push(`${origin.replace(/\/$/, '')}/decks/view/${id}`);
+  }
+  return out;
+}

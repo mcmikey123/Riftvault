@@ -47,6 +47,24 @@ describe('extractDeckFromNextHtml', () => {
   });
 });
 
+describe('extractDeckLinks', () => {
+  it('extracts deck links in page order, deduped', async () => {
+    const { extractDeckLinks } = await import('../src/lib/deckImport.js');
+    const a = '11111111-2222-4333-8444-555555555555';
+    const b = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+    const html = `<a href="/decks/view/${a}">x</a> stuff <a href="/decks/view/${b}">y</a> <a href="/decks/view/${a}">dup</a>`;
+    expect(extractDeckLinks(html, 'https://piltoverarchive.com/')).toEqual([
+      `https://piltoverarchive.com/decks/view/${a}`,
+      `https://piltoverarchive.com/decks/view/${b}`,
+    ]);
+  });
+
+  it('returns empty for pages without deck links', async () => {
+    const { extractDeckLinks } = await import('../src/lib/deckImport.js');
+    expect(extractDeckLinks('<html>nope</html>', 'https://x.com')).toEqual([]);
+  });
+});
+
 describe('PiltoverArchiveSource', () => {
   it('claims piltoverarchive.com URLs', () => {
     const source = new PiltoverArchiveSource();

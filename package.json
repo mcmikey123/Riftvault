@@ -15,6 +15,7 @@
     "test": "npm run test -w apps/server",
     "sync-cards": "npm run sync-cards -w apps/server",
     "make-product": "npm run make-product -w apps/server --",
+    "import-meta": "npm run import-meta -w apps/server --",
     "start": "npm run start -w apps/server"
   },
   "devDependencies": {
