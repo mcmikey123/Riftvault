@@ -27,23 +27,28 @@ export class RiftScribeSource implements CardSource {
     const byId = new Map<string, SourceCard>();
     let expectedTotal: number | null = null;
 
-    // The API's pagination scheme is unverified, so don't assume one: keep
-    // requesting pages while they yield NEW cards (a short page is not the
-    // end — the server may cap page size below what we ask for), follow
-    // `next` links when offered, and fall back through common param styles
-    // for APIs that ignore `page`/`pageSize` entirely. De-duping by card ID
-    // makes every scheme safe to probe.
-    const PAGE_SIZE = 250;
+    // The API's pagination scheme is unverified, so don't assume one. The
+    // server validates query params (422 on out-of-range values) but ignores
+    // unknown ones, so: try a bare `page` first (server-default page size),
+    // then common size-param styles at modest sizes. A style that errors is
+    // skipped, not fatal. Keep requesting pages while they yield NEW cards;
+    // an EMPTY page is authoritative end-of-catalogue and stops all probing.
+    // De-duping by card ID makes every scheme safe to probe.
     const styles: ((page: number) => Record<string, string>)[] = [
-      (p) => ({ page: String(p), pageSize: String(PAGE_SIZE) }),
-      (p) => ({ page: String(p), limit: String(PAGE_SIZE) }),
-      (p) => ({ page: String(p), per_page: String(PAGE_SIZE) }),
-      (p) => ({ offset: String((p - 1) * PAGE_SIZE), limit: String(PAGE_SIZE) }),
+      (p) => ({ page: String(p) }),
+      (p) => ({ page: String(p), page_size: '100' }),
+      (p) => ({ page: String(p), pageSize: '100' }),
+      (p) => ({ page: String(p), per_page: '100' }),
+      (p) => ({ page: String(p), limit: '100' }),
+      (p) => ({ page: String(p), limit: '50' }),
+      (p) => ({ offset: String((p - 1) * 50), limit: '50' }),
     ];
 
+    let sawEmptyPage = false;
     for (const style of styles) {
       let page = 1;
       let nextUrl: string | null = null;
+      let styleFailed = false;
       for (;;) {
         let url: string;
         if (nextUrl) {
@@ -53,10 +58,20 @@ export class RiftScribeSource implements CardSource {
           for (const [k, v] of Object.entries(style(page))) u.searchParams.set(k, v);
           url = u.toString();
         }
-        const body = await this.getJson(url);
+        let body: unknown;
+        try {
+          body = await this.getJson(url);
+        } catch (err) {
+          console.warn(`[riftscribe] ${(err as Error).message} — skipping this param style`);
+          styleFailed = true;
+          break;
+        }
         expectedTotal ??= extractTotal(body);
         const items = extractItems(body);
-        if (!items || items.length === 0) break;
+        if (!items || items.length === 0) {
+          sawEmptyPage = page > 1; // the server itself said "no more"
+          break;
+        }
         let added = 0;
         for (const item of items) {
           const card = mapCard(item);
@@ -70,6 +85,8 @@ export class RiftScribeSource implements CardSource {
         page++;
         if (page > 400) throw new Error('[riftscribe] pagination ran away (>400 pages)');
       }
+      if (styleFailed) continue;
+      if (sawEmptyPage) break;
       if (expectedTotal !== null && byId.size >= expectedTotal) break;
     }
 
@@ -114,7 +131,17 @@ export class RiftScribeSource implements CardSource {
 
   private async getJson(url: string): Promise<unknown> {
     const res = await fetch(url, { headers: { accept: 'application/json' } });
-    if (!res.ok) throw new Error(`GET ${url} → ${res.status}`);
+    if (!res.ok) {
+      // FastAPI-style servers explain validation failures in the body —
+      // surface that instead of a bare status code.
+      let detail = '';
+      try {
+        detail = ` ${(await res.text()).slice(0, 300)}`;
+      } catch {
+        /* body unavailable */
+      }
+      throw new Error(`GET ${url} → ${res.status}${detail}`);
+    }
     return res.json();
   }
 }
