@@ -89,6 +89,13 @@ describe('parseDecklist', () => {
     ]);
   });
 
+  it('strips id-like parentheticals it cannot parse (letter-prefixed numbers)', () => {
+    const { entries } = parseDecklist('6 Order Rune (SFD-R06)');
+    expect(entries).toEqual([
+      { qty: 6, name: 'Order Rune', raw: '6 Order Rune (SFD-R06)' },
+    ]);
+  });
+
   it('keeps non-ref parentheses as part of the name', () => {
     const { entries } = parseDecklist('2 Fight or Flight (promo)');
     expect(entries).toEqual([

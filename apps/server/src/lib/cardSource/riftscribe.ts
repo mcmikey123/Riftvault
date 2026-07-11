@@ -37,6 +37,7 @@ export class RiftScribeSource implements CardSource {
     const LIMIT = 200;
     const byId = new Map<string, SourceCard>();
     const variantIds = new Set<string>(); // ids currently holding a non-base printing
+    const unmappable: string[] = [];
     let offset = 0;
 
     for (;;) {
@@ -51,7 +52,10 @@ export class RiftScribeSource implements CardSource {
 
       for (const item of items as Record<string, unknown>[]) {
         const card = mapCard(item);
-        if (!card) continue;
+        if (!card) {
+          unmappable.push(String(item.id ?? item.name ?? '<no id>'));
+          continue;
+        }
         const isBase = !item.variant;
         const existing = byId.get(card.id);
         if (!existing || (isBase && variantIds.has(card.id))) {
@@ -70,6 +74,13 @@ export class RiftScribeSource implements CardSource {
       throw new Error(
         '[riftscribe] no cards could be mapped — API shape changed? ' +
           `Check ${this.base}/openapi.json and update mapCard() in riftscribe.ts`,
+      );
+    }
+    if (unmappable.length > 0) {
+      console.warn(
+        `[riftscribe] skipped ${unmappable.length} unmappable row(s) — likely non-numeric ` +
+          `collector numbers (rune sheets etc.): ${unmappable.slice(0, 8).join(', ')}` +
+          (unmappable.length > 8 ? ', …' : ''),
       );
     }
     console.log(`[riftscribe] fetched ${byId.size} cards (scanned ${offset} rows incl. variants)`);

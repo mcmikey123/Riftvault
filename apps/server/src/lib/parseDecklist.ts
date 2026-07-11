@@ -56,20 +56,25 @@ function isSectionHeader(line: string): boolean {
   return SECTION_WORDS.has(noCount.toLowerCase().trim());
 }
 
+/** "(OGN-251)" or "(SFD-R06)" — shaped like a card ID, parseable or not. */
+const ID_LIKE = /^[A-Za-z]{2,5}[-\s][A-Za-z0-9]{1,6}(?:[-/][A-Za-z0-9]{1,6})?$/;
+
 /**
  * "Jinx - Loose Cannon (OGN-251)" → name + authoritative ref.
- * Parentheses that aren't a card ID stay part of the name.
+ * An id-like parenthetical we can't parse (letter-prefixed collector
+ * numbers like "SFD-R06") is stripped so the clean name can resolve.
+ * Parentheses that aren't id-like ("(promo)") stay part of the name.
  */
 function entryFrom(qty: number, rest: string, raw: string): DecklistEntry {
   const wholeRef = parseCardRef(rest);
   if (wholeRef) return { qty, ref: wholeRef, raw };
   const m = rest.match(/^(.*?)\s*\(([^()]+)\)\s*$/);
   if (m) {
-    const ref = parseCardRef(m[2]!);
-    if (ref) {
-      const name = m[1]!.trim();
-      return name ? { qty, name, ref, raw } : { qty, ref, raw };
-    }
+    const inner = m[2]!.trim();
+    const name = m[1]!.trim();
+    const ref = parseCardRef(inner);
+    if (ref) return name ? { qty, name, ref, raw } : { qty, ref, raw };
+    if (name && ID_LIKE.test(inner)) return { qty, name, raw };
   }
   return { qty, name: rest, raw };
 }
