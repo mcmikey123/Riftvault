@@ -24,40 +24,72 @@ export class RiftScribeSource implements CardSource {
   async fetchAllCards(): Promise<SourceCard[]> {
     const endpoint = await this.findListEndpoint();
     console.log(`[riftscribe] using list endpoint: ${endpoint}`);
-    const out: SourceCard[] = [];
-    const seen = new Set<string>();
-    let page = 1;
-    // Paginate until a page comes back empty/short; tolerate APIs that
-    // ignore the page param by de-duping and stopping on no-new-cards.
-    for (;;) {
-      const url = new URL(endpoint);
-      url.searchParams.set('page', String(page));
-      url.searchParams.set('pageSize', '250');
-      const body = await this.getJson(url.toString());
-      const items = extractItems(body);
-      if (!items || items.length === 0) break;
-      let added = 0;
-      for (const item of items) {
-        const card = mapCard(item);
-        if (!card) continue;
-        if (seen.has(card.id)) continue;
-        seen.add(card.id);
-        out.push(card);
-        added++;
+    const byId = new Map<string, SourceCard>();
+    let expectedTotal: number | null = null;
+
+    // The API's pagination scheme is unverified, so don't assume one: keep
+    // requesting pages while they yield NEW cards (a short page is not the
+    // end — the server may cap page size below what we ask for), follow
+    // `next` links when offered, and fall back through common param styles
+    // for APIs that ignore `page`/`pageSize` entirely. De-duping by card ID
+    // makes every scheme safe to probe.
+    const PAGE_SIZE = 250;
+    const styles: ((page: number) => Record<string, string>)[] = [
+      (p) => ({ page: String(p), pageSize: String(PAGE_SIZE) }),
+      (p) => ({ page: String(p), limit: String(PAGE_SIZE) }),
+      (p) => ({ page: String(p), per_page: String(PAGE_SIZE) }),
+      (p) => ({ offset: String((p - 1) * PAGE_SIZE), limit: String(PAGE_SIZE) }),
+    ];
+
+    for (const style of styles) {
+      let page = 1;
+      let nextUrl: string | null = null;
+      for (;;) {
+        let url: string;
+        if (nextUrl) {
+          url = nextUrl;
+        } else {
+          const u = new URL(endpoint);
+          for (const [k, v] of Object.entries(style(page))) u.searchParams.set(k, v);
+          url = u.toString();
+        }
+        const body = await this.getJson(url);
+        expectedTotal ??= extractTotal(body);
+        const items = extractItems(body);
+        if (!items || items.length === 0) break;
+        let added = 0;
+        for (const item of items) {
+          const card = mapCard(item);
+          if (card && !byId.has(card.id)) {
+            byId.set(card.id, card);
+            added++;
+          }
+        }
+        if (added === 0) break; // page param ignored, or we're past the end
+        nextUrl = extractNext(body, endpoint);
+        page++;
+        if (page > 400) throw new Error('[riftscribe] pagination ran away (>400 pages)');
       }
-      if (added === 0) break; // API ignored pagination — one full dump
-      if (items.length < 250 && page > 1) break;
-      if (items.length < 250 && page === 1) break;
-      page++;
-      if (page > 200) throw new Error('[riftscribe] pagination ran away (>200 pages)');
+      if (expectedTotal !== null && byId.size >= expectedTotal) break;
     }
-    if (out.length === 0) {
+
+    if (byId.size === 0) {
       throw new Error(
         '[riftscribe] endpoint responded but no cards could be mapped — API shape ' +
           'changed? Inspect the response and update mapCard() in riftscribe.ts',
       );
     }
-    return out;
+    if (expectedTotal !== null && byId.size < expectedTotal) {
+      console.warn(
+        `[riftscribe] WARNING: fetched ${byId.size} of ${expectedTotal} reported cards — ` +
+          'pagination scheme not fully cracked. Inspect the list endpoint response ' +
+          'and update fetchAllCards() in riftscribe.ts.',
+      );
+    }
+    console.log(
+      `[riftscribe] fetched ${byId.size} cards${expectedTotal !== null ? ` (API reports ${expectedTotal})` : ''}`,
+    );
+    return [...byId.values()];
   }
 
   private async findListEndpoint(): Promise<string> {
@@ -85,6 +117,44 @@ export class RiftScribeSource implements CardSource {
     if (!res.ok) throw new Error(`GET ${url} → ${res.status}`);
     return res.json();
   }
+}
+
+/** Pull a reported total card count out of common response envelopes. */
+function extractTotal(body: unknown): number | null {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
+  const obj = body as Record<string, unknown>;
+  const nests = [obj, obj.meta, obj.pagination, obj.page_info, obj.pageInfo];
+  for (const nest of nests) {
+    if (!nest || typeof nest !== 'object') continue;
+    const n = nest as Record<string, unknown>;
+    for (const key of ['total', 'totalCount', 'total_count', 'totalItems', 'total_items']) {
+      const v = n[key];
+      if (typeof v === 'number' && Number.isFinite(v) && v > 0) return v;
+    }
+  }
+  return null;
+}
+
+/** Follow `next` pagination links when the API offers them. */
+function extractNext(body: unknown, base: string): string | null {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
+  const obj = body as Record<string, unknown>;
+  const nests = [obj, obj.meta, obj.pagination, obj.links];
+  for (const nest of nests) {
+    if (!nest || typeof nest !== 'object') continue;
+    const n = nest as Record<string, unknown>;
+    for (const key of ['next', 'nextPage', 'next_page', 'next_url']) {
+      const v = n[key];
+      if (typeof v === 'string' && v) {
+        try {
+          return new URL(v, base).toString();
+        } catch {
+          return null;
+        }
+      }
+    }
+  }
+  return null;
 }
 
 function extractItems(body: unknown): Record<string, unknown>[] | null {
