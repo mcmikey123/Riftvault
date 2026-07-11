@@ -1,8 +1,12 @@
 # Riftbound Vault
 
-Personal collection tracker for the Riftbound TCG. Single user. Core loop:
-get physical cards into the vault with minimal effort, then diff any decklist
-against the vault to see what's missing.
+Collection tracker for the Riftbound TCG. Core loop: get physical cards into
+the vault with minimal effort, then diff any decklist against the vault to
+see what's missing.
+
+Supports a small group of users on one instance: the card database, sealed
+products and meta decks are shared; each person has their own vault, history
+and personal decks, identified by an access key.
 
 - **Frontend** — Vite + React + TypeScript PWA (`apps/web`), mobile-first,
   installable, camera access for scanning.
@@ -21,6 +25,23 @@ npm run dev               # server :8787 + web :5173 (proxied)
 
 Open http://localhost:5173. The card database is synced, never typed — if
 `sync-cards` fails, see **Card sync** below.
+
+## Users & access keys
+
+Every API request carries an `x-vault-key` header; the key identifies the
+user (no separate login). On first boot a user named `owner` is created —
+its key is printed to the console (seeded from `VAULT_KEY` when set, random
+otherwise). Add more people with:
+
+```bash
+npm run add-user -- --name alice     # prints their key
+npm run add-user -- --list           # recover keys
+```
+
+Each person enters their key once on the app's Home screen. Shared between
+everyone: cards, sets, sealed products, meta decks. Per-person: vault,
+undo history, decks imported as "My deck". Pre-multi-user databases are
+migrated automatically; existing data goes to the first user.
 
 ## Entry modes
 

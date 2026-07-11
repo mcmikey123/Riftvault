@@ -33,6 +33,12 @@ export const FIXTURE_CARDS: Card[] = [
   makeCard({ set_code: 'SFR', collector_number: 31, name: 'Shadow Isles Wraith', rarity: 'common' }),
 ];
 
+/** Test users created by seedDb. Send TEST_KEY as x-vault-key in API tests. */
+export const TEST_USER_ID = 1;
+export const TEST_KEY = 'testkey';
+export const OTHER_USER_ID = 2;
+export const OTHER_KEY = 'otherkey';
+
 export function seedDb(cards: Card[] = FIXTURE_CARDS): Db {
   const db = createDb(':memory:');
   const insert = db.prepare(
@@ -40,5 +46,9 @@ export function seedDb(cards: Card[] = FIXTURE_CARDS): Db {
      VALUES (@id, @set_code, @collector_number, @name, @type, @faction, @rarity, @image_url, '{}')`,
   );
   for (const card of cards) insert.run(card);
+  const now = new Date().toISOString();
+  const user = db.prepare('INSERT INTO users (id, name, key, created_at) VALUES (?, ?, ?, ?)');
+  user.run(TEST_USER_ID, 'test', TEST_KEY, now);
+  user.run(OTHER_USER_ID, 'other', OTHER_KEY, now);
   return db;
 }

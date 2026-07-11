@@ -10,7 +10,8 @@
     "test": "vitest run",
     "sync-cards": "tsx scripts/sync-cards.ts",
     "make-product": "tsx scripts/make-product.ts",
-    "import-meta": "tsx scripts/import-meta.ts"
+    "import-meta": "tsx scripts/import-meta.ts",
+    "add-user": "tsx scripts/add-user.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.111.0",

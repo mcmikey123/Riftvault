@@ -3,6 +3,7 @@ import path from 'node:path';
 import { Hono } from 'hono';
 import type { Db } from './db.js';
 import { env } from './env.js';
+import { findUserByKey, type User } from './lib/users.js';
 import { bulkRoutes } from './routes/bulk.js';
 import { cardsRoutes } from './routes/cards.js';
 import { decksRoutes } from './routes/decks.js';
@@ -27,21 +28,34 @@ const MIME: Record<string, string> = {
   '.txt': 'text/plain',
 };
 
-export function createApp(db: Db) {
-  const app = new Hono();
+type AppEnv = { Variables: { user: User } };
 
-  // Registered before the auth middleware so uptime checks don't need the key.
+export function createApp(db: Db) {
+  const app = new Hono<AppEnv>();
+
+  // Registered before the auth middleware so uptime checks don't need a key.
   app.get('/api/health', (c) => c.json({ ok: true }));
 
-  // Personal tool: single shared secret header when VAULT_KEY is set.
+  // Multi-user: the access key IS the identity. Cards/products/meta decks
+  // are shared; vault, history and personal decks are scoped to the user.
   app.use('/api/*', async (c, next) => {
-    if (env.vaultKey && c.req.header('x-vault-key') !== env.vaultKey) {
-      return c.json({ error: 'unauthorized' }, 401);
+    const user = findUserByKey(db, c.req.header('x-vault-key') ?? '');
+    if (!user) {
+      return c.json(
+        { error: 'unauthorized — enter your access key (ask the owner, or run: npm run add-user)' },
+        401,
+      );
     }
+    c.set('user', user);
     await next();
   });
 
-  const api = new Hono();
+  app.get('/api/me', (c) => {
+    const user = c.get('user');
+    return c.json({ id: user.id, name: user.name });
+  });
+
+  const api = new Hono<AppEnv>();
   api.route('/', cardsRoutes(db));
   api.route('/', vaultRoutes(db));
   api.route('/', productsRoutes(db));

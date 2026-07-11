@@ -5,9 +5,11 @@ import { findImportSource } from '../lib/deckImport.js';
 import { parseDecklist } from '../lib/parseDecklist.js';
 import { resolveDeckEntries } from '../lib/resolveDeck.js';
 import { getCard } from '../lib/search.js';
+import type { User } from '../lib/users.js';
 
 interface DeckRow {
   id: number;
+  user_id: number | null;
   name: string;
   kind: string;
   source_url: string | null;
@@ -18,6 +20,8 @@ interface DeckRow {
   created_at: string;
   updated_at: string | null;
 }
+
+type AppEnv = { Variables: { user: User } };
 
 export function deckToJson(db: Db, row: DeckRow) {
   const count = db
@@ -38,7 +42,8 @@ export function deckToJson(db: Db, row: DeckRow) {
   };
 }
 
-export function deckRequirements(db: Db, deckId: number) {
+/** Deck requirements vs ONE user's vault (foils count toward owned). */
+export function deckRequirements(db: Db, deckId: number, userId: number) {
   return db
     .prepare(
       `SELECT dc.qty AS need,
@@ -46,33 +51,41 @@ export function deckRequirements(db: Db, deckId: number) {
               c.id, c.set_code, c.collector_number, c.name, c.type, c.faction, c.rarity, c.image_url
        FROM deck_cards dc
        JOIN cards c ON c.id = dc.card_id
-       LEFT JOIN vault v ON v.card_id = dc.card_id
+       LEFT JOIN vault v ON v.card_id = dc.card_id AND v.user_id = ?
        WHERE dc.deck_id = ?
        ORDER BY c.set_code, c.collector_number`,
     )
-    .all(deckId) as (Card & { need: number; have: number })[];
+    .all(userId, deckId) as (Card & { need: number; have: number })[];
+}
+
+/** Meta decks are shared; personal decks are visible to their owner only. */
+function visibleDeck(db: Db, id: number | string, userId: number): DeckRow | null {
+  const row = db.prepare('SELECT * FROM decks WHERE id = ?').get(id) as DeckRow | undefined;
+  if (!row) return null;
+  if (row.kind !== 'meta' && row.user_id !== userId) return null;
+  return row;
 }
 
 export function decksRoutes(db: Db) {
-  const app = new Hono();
+  const app = new Hono<AppEnv>();
 
   app.get('/decks', (c) => {
     const rows = db
-      .prepare('SELECT * FROM decks ORDER BY kind, popularity_rank IS NULL, popularity_rank, name')
-      .all() as DeckRow[];
+      .prepare(
+        `SELECT * FROM decks WHERE kind = 'meta' OR user_id = ?
+         ORDER BY kind, popularity_rank IS NULL, popularity_rank, name`,
+      )
+      .all(c.get('user').id) as DeckRow[];
     return c.json(rows.map((r) => deckToJson(db, r)));
   });
 
   app.get('/decks/:id', (c) => {
-    const row = db.prepare('SELECT * FROM decks WHERE id = ?').get(c.req.param('id')) as
-      | DeckRow
-      | undefined;
+    const row = visibleDeck(db, c.req.param('id'), c.get('user').id);
     if (!row) return c.json({ error: 'not found' }, 404);
     const deck = deckToJson(db, row);
-    const cards = deckRequirements(db, row.id).map(({ need, have, ...card }) => ({
-      card,
-      qty: need,
-    }));
+    const cards = deckRequirements(db, row.id, c.get('user').id).map(
+      ({ need, have, ...card }) => ({ card, qty: need }),
+    );
     return c.json({ ...deck, cards });
   });
 
@@ -118,14 +131,17 @@ export function decksRoutes(db: Db) {
     const resolved = resolveDeckEntries(db, parsed.entries);
     const unresolved = [...parsed.unparsed, ...resolved.unresolved];
     const now = new Date().toISOString();
+    // Meta decks are shared (user_id NULL); personal decks belong to the creator.
+    const ownerId = kind === 'meta' ? null : c.get('user').id;
 
     const deckId = db.transaction(() => {
       const info = db
         .prepare(
-          `INSERT INTO decks (name, kind, source_url, archetype, popularity_rank, source_text, unresolved_json, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO decks (user_id, name, kind, source_url, archetype, popularity_rank, source_text, unresolved_json, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
+          ownerId,
           name ?? `Imported deck ${now.slice(0, 10)}`,
           kind,
           sourceUrl,
@@ -146,18 +162,18 @@ export function decksRoutes(db: Db) {
   });
 
   app.delete('/decks/:id', (c) => {
-    const id = c.req.param('id');
+    const row = visibleDeck(db, c.req.param('id'), c.get('user').id);
+    if (!row) return c.json({ error: 'not found' }, 404);
     db.transaction(() => {
-      db.prepare('DELETE FROM deck_cards WHERE deck_id = ?').run(id);
-      db.prepare('DELETE FROM decks WHERE id = ?').run(id);
+      db.prepare('DELETE FROM deck_cards WHERE deck_id = ?').run(row.id);
+      db.prepare('DELETE FROM decks WHERE id = ?').run(row.id);
     })();
     return c.json({ ok: true });
   });
 
   /** Manual fixing of unresolved lines: upsert one card into the deck. */
   app.post('/decks/:id/cards', async (c) => {
-    const id = Number(c.req.param('id'));
-    const row = db.prepare('SELECT * FROM decks WHERE id = ?').get(id) as DeckRow | undefined;
+    const row = visibleDeck(db, c.req.param('id'), c.get('user').id);
     if (!row) return c.json({ error: 'not found' }, 404);
     const body = (await c.req.json()) as { card_id?: string; qty?: number; resolves_line?: string };
     if (!body.card_id || !Number.isInteger(body.qty)) {
@@ -167,12 +183,15 @@ export function decksRoutes(db: Db) {
 
     db.transaction(() => {
       if (body.qty! <= 0) {
-        db.prepare('DELETE FROM deck_cards WHERE deck_id = ? AND card_id = ?').run(id, body.card_id);
+        db.prepare('DELETE FROM deck_cards WHERE deck_id = ? AND card_id = ?').run(
+          row.id,
+          body.card_id,
+        );
       } else {
         db.prepare(
           `INSERT INTO deck_cards (deck_id, card_id, qty) VALUES (?, ?, ?)
            ON CONFLICT(deck_id, card_id) DO UPDATE SET qty = excluded.qty`,
-        ).run(id, body.card_id, body.qty);
+        ).run(row.id, body.card_id, body.qty);
       }
       if (body.resolves_line) {
         const unresolved = (JSON.parse(row.unresolved_json) as string[]).filter(
@@ -181,22 +200,20 @@ export function decksRoutes(db: Db) {
         db.prepare('UPDATE decks SET unresolved_json = ?, updated_at = ? WHERE id = ?').run(
           JSON.stringify(unresolved),
           new Date().toISOString(),
-          id,
+          row.id,
         );
       }
     })();
 
-    const updated = db.prepare('SELECT * FROM decks WHERE id = ?').get(id) as DeckRow;
+    const updated = db.prepare('SELECT * FROM decks WHERE id = ?').get(row.id) as DeckRow;
     return c.json(deckToJson(db, updated));
   });
 
   app.get('/decks/:id/diff', (c) => {
-    const row = db.prepare('SELECT id, name, kind FROM decks WHERE id = ?').get(c.req.param('id')) as
-      | { id: number; name: string; kind: string }
-      | undefined;
+    const row = visibleDeck(db, c.req.param('id'), c.get('user').id);
     if (!row) return c.json({ error: 'not found' }, 404);
 
-    const reqs = deckRequirements(db, row.id);
+    const reqs = deckRequirements(db, row.id, c.get('user').id);
     const have: DeckDiff['have'] = [];
     const missing: DeckDiff['missing'] = [];
     let total_missing = 0;
@@ -212,7 +229,7 @@ export function decksRoutes(db: Db) {
       }
     }
     const diff: DeckDiff = {
-      deck: row,
+      deck: { id: row.id, name: row.name, kind: row.kind },
       have,
       missing,
       total_missing,

@@ -1,9 +1,12 @@
 import { Hono } from 'hono';
 import type { Db } from '../db.js';
 import { searchCards } from '../lib/search.js';
+import type { User } from '../lib/users.js';
+
+type AppEnv = { Variables: { user: User } };
 
 export function cardsRoutes(db: Db) {
-  const app = new Hono();
+  const app = new Hono<AppEnv>();
 
   app.get('/sets', (c) => {
     const rows = db
@@ -14,11 +17,11 @@ export function cardsRoutes(db: Db) {
                 COUNT(CASE WHEN COALESCE(v.qty,0) + COALESCE(v.qty_foil,0) > 0 THEN 1 END) AS owned_unique,
                 COALESCE(SUM(COALESCE(v.qty,0) + COALESCE(v.qty_foil,0)), 0) AS owned_total
          FROM cards c
-         LEFT JOIN vault v ON v.card_id = c.id
+         LEFT JOIN vault v ON v.card_id = c.id AND v.user_id = ?
          LEFT JOIN sets s ON s.code = c.set_code
          GROUP BY c.set_code ORDER BY c.set_code`,
       )
-      .all() as {
+      .all(c.get('user').id) as {
       set_code: string;
       name: string | null;
       card_count: number;

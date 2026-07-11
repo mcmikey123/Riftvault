@@ -16,6 +16,7 @@
     "sync-cards": "npm run sync-cards -w apps/server",
     "make-product": "npm run make-product -w apps/server --",
     "import-meta": "npm run import-meta -w apps/server --",
+    "add-user": "npm run add-user -w apps/server --",
     "start": "npm run start -w apps/server"
   },
   "devDependencies": {

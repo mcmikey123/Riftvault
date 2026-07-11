@@ -66,6 +66,7 @@ export type DeckJson = {
 };
 
 export const api = {
+  me: () => request<{ id: number; name: string }>('/api/me'),
   sets: () => request<SetSummary[]>('/api/sets'),
   cards: (params: { set?: string; q?: string; page?: number; pageSize?: number }) => {
     const search = new URLSearchParams();

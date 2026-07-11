@@ -1,10 +1,13 @@
 import { Hono } from 'hono';
 import type { Card } from '@riftvault/types';
 import type { Db } from '../db.js';
+import type { User } from '../lib/users.js';
 import { applyAdjustments } from '../lib/vaultStore.js';
 
+type AppEnv = { Variables: { user: User } };
+
 export function productsRoutes(db: Db) {
-  const app = new Hono();
+  const app = new Hono<AppEnv>();
 
   const contents = (productId: string) =>
     db
@@ -40,6 +43,7 @@ export function productsRoutes(db: Db) {
     if (cards.length === 0) return c.json({ error: 'product has no contents' }, 400);
     const result = applyAdjustments(
       db,
+      c.get('user').id,
       cards.map((row) => ({ card_id: row.id, delta: row.qty })),
       'product',
     );

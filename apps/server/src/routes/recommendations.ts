@@ -2,10 +2,13 @@ import { Hono } from 'hono';
 import type { DeckScore, RecommendationsResponse } from '@riftvault/types';
 import type { Db } from '../db.js';
 import { mostWanted, rankDecks, scoreDeck } from '../lib/buildability.js';
+import type { User } from '../lib/users.js';
 import { deckRequirements } from './decks.js';
 
+type AppEnv = { Variables: { user: User } };
+
 export function recommendationsRoutes(db: Db) {
-  const app = new Hono();
+  const app = new Hono<AppEnv>();
 
   app.get('/recommendations', (c) => {
     const decks = db
@@ -16,7 +19,7 @@ export function recommendationsRoutes(db: Db) {
       .all() as DeckScore['deck'][];
 
     const scores: DeckScore[] = decks.map((deck) => {
-      const reqs = deckRequirements(db, deck.id).map(({ need, have, ...card }) => ({
+      const reqs = deckRequirements(db, deck.id, c.get('user').id).map(({ need, have, ...card }) => ({
         card,
         need,
         have,
