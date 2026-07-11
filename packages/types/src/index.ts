@@ -146,6 +146,8 @@ export interface ScanResponse {
 
 export interface SetSummary {
   set_code: string;
+  /** Display name from the sets table; null until the source provides one. */
+  name: string | null;
   card_count: number;
   owned_unique: number;
   owned_total: number;

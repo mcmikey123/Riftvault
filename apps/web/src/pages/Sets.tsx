@@ -23,7 +23,10 @@ export function Sets() {
       {sets?.map((s) => (
         <Link key={s.set_code} className="panel stack" to={`/sets/${s.set_code}`}>
           <div className="row spread">
-            <strong>{s.set_code}</strong>
+            <strong>
+              {s.name ?? s.set_code}
+              {s.name && <span className="muted"> {s.set_code}</span>}
+            </strong>
             <span className="muted">
               {s.owned_unique}/{s.card_count} unique · {s.owned_total} total
             </span>

@@ -61,7 +61,7 @@ export function Vault() {
         </div>
         {sets.map((s) => (
           <div key={s.set_code} className="row spread muted">
-            <span>{s.set_code}</span>
+            <span>{s.name ?? s.set_code}</span>
             <span>
               {s.owned_unique}/{s.card_count} unique ({Math.round(s.completion * 100)}%) ·{' '}
               {s.owned_total} total
@@ -75,7 +75,7 @@ export function Vault() {
           <option value="">All sets</option>
           {sets.map((s) => (
             <option key={s.set_code} value={s.set_code}>
-              {s.set_code}
+              {s.name ?? s.set_code}
             </option>
           ))}
         </select>

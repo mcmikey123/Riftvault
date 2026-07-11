@@ -17,6 +17,11 @@ CREATE TABLE IF NOT EXISTS cards (
   UNIQUE(set_code, collector_number)
 );
 
+CREATE TABLE IF NOT EXISTS sets (
+  code TEXT PRIMARY KEY,
+  name TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS vault (
   card_id TEXT PRIMARY KEY REFERENCES cards(id),
   qty INTEGER NOT NULL DEFAULT 0,

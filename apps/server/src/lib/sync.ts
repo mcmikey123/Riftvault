@@ -38,6 +38,20 @@ export async function syncCards(db: Db, source: CardSource): Promise<SyncResult>
   return { fetched: cards.length, inserted, updated };
 }
 
+/** Upsert set display names when the source can provide them. */
+export async function syncSetNames(db: Db, source: CardSource): Promise<number> {
+  if (!source.fetchSets) return 0;
+  const sets = await source.fetchSets();
+  const upsert = db.prepare(
+    `INSERT INTO sets (code, name) VALUES (@code, @name)
+     ON CONFLICT(code) DO UPDATE SET name = @name`,
+  );
+  db.transaction(() => {
+    for (const set of sets) upsert.run(set);
+  })();
+  return sets.length;
+}
+
 export interface ProductFixture {
   product_id: string;
   name: string;

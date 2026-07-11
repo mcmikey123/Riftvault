@@ -66,7 +66,7 @@ export function Rapid() {
       <select value={set} onChange={(e) => setSet(e.target.value)}>
         {sets.map((s) => (
           <option key={s.set_code} value={s.set_code}>
-            {s.set_code} ({s.card_count} cards)
+            {s.name ?? s.set_code} ({s.card_count} cards)
           </option>
         ))}
       </select>

@@ -9,14 +9,18 @@ export function cardsRoutes(db: Db) {
     const rows = db
       .prepare(
         `SELECT c.set_code,
+                s.name,
                 COUNT(*) AS card_count,
                 COUNT(CASE WHEN COALESCE(v.qty,0) + COALESCE(v.qty_foil,0) > 0 THEN 1 END) AS owned_unique,
                 COALESCE(SUM(COALESCE(v.qty,0) + COALESCE(v.qty_foil,0)), 0) AS owned_total
-         FROM cards c LEFT JOIN vault v ON v.card_id = c.id
+         FROM cards c
+         LEFT JOIN vault v ON v.card_id = c.id
+         LEFT JOIN sets s ON s.code = c.set_code
          GROUP BY c.set_code ORDER BY c.set_code`,
       )
       .all() as {
       set_code: string;
+      name: string | null;
       card_count: number;
       owned_unique: number;
       owned_total: number;

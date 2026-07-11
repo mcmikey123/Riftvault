@@ -1,5 +1,5 @@
 import { makeCardId, parseCardRef } from '../cardId.js';
-import type { CardSource, SourceCard } from './index.js';
+import type { CardSource, SourceCard, SourceSet } from './index.js';
 
 /**
  * RiftScribe (https://riftscribe.gg) sync client. Open REST, no auth.
@@ -76,6 +76,29 @@ export class RiftScribeSource implements CardSource {
     return [...byId.values()];
   }
 
+  /**
+   * Set display names from GET /api/cards/filters. That endpoint exists in
+   * the OpenAPI spec but its response shape wasn't verifiable when this was
+   * written, so parsing is tolerant and a failure is non-fatal — the UI
+   * falls back to set codes.
+   */
+  async fetchSets(): Promise<SourceSet[]> {
+    try {
+      const body = await this.getJson(`${this.base}/api/cards/filters`);
+      const sets = parseSetsPayload(body);
+      if (sets.length === 0) {
+        console.warn(
+          '[riftscribe] /api/cards/filters returned no recognisable sets — ' +
+            `inspect it and update parseSetsPayload(): ${JSON.stringify(body).slice(0, 200)}`,
+        );
+      }
+      return sets;
+    } catch (err) {
+      console.warn(`[riftscribe] set names unavailable: ${(err as Error).message}`);
+      return [];
+    }
+  }
+
   private async getJson(url: string): Promise<unknown> {
     const res = await fetch(url, { headers: { accept: 'application/json' } });
     if (!res.ok) {
@@ -90,6 +113,38 @@ export class RiftScribeSource implements CardSource {
     }
     return res.json();
   }
+}
+
+/** Find set {code, name} pairs in whatever envelope the filters endpoint uses. */
+export function parseSetsPayload(body: unknown): SourceSet[] {
+  const containers: unknown[] = [body];
+  if (body && typeof body === 'object' && !Array.isArray(body)) {
+    const obj = body as Record<string, unknown>;
+    containers.push(obj.filters, obj.data);
+  }
+
+  for (const container of containers) {
+    if (!container || typeof container !== 'object') continue;
+    const obj = container as Record<string, unknown>;
+    for (const key of ['sets', 'set', 'set_ids', 'series', 'expansions']) {
+      const list = obj[key];
+      if (!Array.isArray(list) || list.length === 0) continue;
+      const out: SourceSet[] = [];
+      for (const item of list) {
+        if (typeof item === 'string' && item.trim()) {
+          out.push({ code: item.trim().toUpperCase(), name: item.trim() });
+        } else if (item && typeof item === 'object') {
+          const o = item as Record<string, unknown>;
+          const code = firstStr(o.id, o.code, o.set_id, o.value, o.key);
+          if (!code) continue;
+          const name = firstStr(o.name, o.label, o.title, o.text) ?? code;
+          out.push({ code: code.toUpperCase(), name });
+        }
+      }
+      if (out.length > 0) return out;
+    }
+  }
+  return [];
 }
 
 function str(v: unknown): string | null {

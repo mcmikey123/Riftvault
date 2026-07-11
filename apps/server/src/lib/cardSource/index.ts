@@ -15,9 +15,16 @@ export interface SourceCard {
   raw_json: string;
 }
 
+export interface SourceSet {
+  code: string;
+  name: string;
+}
+
 export interface CardSource {
   name: string;
   fetchAllCards(): Promise<SourceCard[]>;
+  /** Optional: set code → display name ("OGN" → "Origins"). */
+  fetchSets?(): Promise<SourceSet[]>;
 }
 
 export { RiftScribeSource } from './riftscribe.js';

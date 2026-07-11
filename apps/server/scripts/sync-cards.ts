@@ -1,7 +1,7 @@
 import { getDb } from '../src/db.js';
 import { env } from '../src/env.js';
 import { getCardSource } from '../src/lib/cardSource/index.js';
-import { seedProducts, syncCards } from '../src/lib/sync.js';
+import { seedProducts, syncCards, syncSetNames } from '../src/lib/sync.js';
 
 const db = getDb();
 const source = await getCardSource(env.cardSource, env.riftscribeBase);
@@ -11,6 +11,9 @@ const result = await syncCards(db, source);
 console.log(
   `[sync] fetched ${result.fetched} cards — ${result.inserted} new, ${result.updated} updated`,
 );
+
+const namedSets = await syncSetNames(db, source);
+console.log(`[sync] set names: ${namedSets} synced`);
 
 const products = seedProducts(db, env.productsDir);
 console.log(`[sync] seeded ${products.products} product fixture(s)`);

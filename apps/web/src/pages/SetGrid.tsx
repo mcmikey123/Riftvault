@@ -17,6 +17,7 @@ interface Qty {
  */
 export function SetGrid() {
   const { code } = useParams();
+  const [setName, setSetName] = useState<string | null>(null);
   const [cards, setCards] = useState<Card[]>([]);
   const [quantities, setQuantities] = useState<Map<string, Qty>>(new Map());
   const [foilCells, setFoilCells] = useState<Set<string>>(new Set());
@@ -26,11 +27,13 @@ export function SetGrid() {
 
   const reload = useCallback(async () => {
     if (!code) return;
-    const [{ cards }, vault] = await Promise.all([
+    const [{ cards }, vault, sets] = await Promise.all([
       api.cards({ set: code, pageSize: 1000 }),
       api.vault(),
+      api.sets(),
     ]);
     setCards(cards);
+    setSetName(sets.find((s) => s.set_code === code)?.name ?? null);
     const map = new Map<string, Qty>();
     for (const row of vault) map.set(row.id, { qty: row.qty, qty_foil: row.qty_foil });
     setQuantities(map);
@@ -103,7 +106,7 @@ export function SetGrid() {
 
   return (
     <div className="stack">
-      <h1>{code} checklist</h1>
+      <h1>{setName ?? code} checklist</h1>
       <p className="muted">Long-press a card to edit foils ✦</p>
       {err && <p className="error">{err}</p>}
       <div className="cardgrid">
