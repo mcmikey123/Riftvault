@@ -8,6 +8,7 @@ export const SET_NAMES: Record<string, string> = {
   OGN: 'Origins',
   SFD: 'Spiritforged',
   UNL: 'Unleashed',
-  // OGS: '…',  // 24 cards, unidentified — likely Origins starter/promo extras.
-  //             Check with: sqlite3 data/vault.db "SELECT id, name FROM cards WHERE set_code='OGS'"
+  // 24 starter-deck exclusives (Annie/Yi/Lux/Garen, cards suffixed "- Starter").
+  // Rename here if you prefer the official box name.
+  OGS: 'Origins Starter',
 };
