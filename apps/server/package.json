@@ -8,7 +8,8 @@
     "start": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "sync-cards": "tsx scripts/sync-cards.ts"
+    "sync-cards": "tsx scripts/sync-cards.ts",
+    "make-product": "tsx scripts/make-product.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.111.0",

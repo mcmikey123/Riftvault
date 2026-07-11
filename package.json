@@ -14,6 +14,7 @@
     "build": "npm run typecheck -w apps/server && npm run build -w apps/web",
     "test": "npm run test -w apps/server",
     "sync-cards": "npm run sync-cards -w apps/server",
+    "make-product": "npm run make-product -w apps/server --",
     "start": "npm run start -w apps/server"
   },
   "devDependencies": {
