@@ -30,19 +30,56 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const db = getDb();
 const source = new PiltoverArchiveSource();
 
-console.log(`[meta] fetching listing: ${listingUrl}`);
-const res = await fetch(listingUrl, { headers: { accept: 'text/html' } });
-if (!res.ok) {
-  console.error(`[meta] listing fetch failed: ${res.status}`);
-  process.exit(1);
+/** Page 1 is the URL as given; later pages get ?page=N (or a {page} placeholder). */
+function withPage(url: string, page: number): string {
+  if (url.includes('{page}')) return url.replace('{page}', String(page));
+  if (page === 1) return url;
+  const u = new URL(url);
+  u.searchParams.set('page', String(page));
+  return u.toString();
 }
-const links = extractDeckLinks(await res.text(), new URL(listingUrl).origin).slice(0, top);
+
+/** Listing pages server-render ~10 decks each — walk pages until we have enough. */
+async function collectLinks(): Promise<string[]> {
+  const origin = new URL(listingUrl).origin;
+  const seen = new Set<string>();
+  const links: string[] = [];
+  for (let page = 1; links.length < top && page <= 20; page++) {
+    const url = withPage(listingUrl, page);
+    console.log(`[meta] fetching listing: ${url}`);
+    const res = await fetch(url, { headers: { accept: 'text/html' } });
+    if (!res.ok) {
+      console.warn(`[meta] listing page ${page} → ${res.status}, stopping`);
+      break;
+    }
+    const found = extractDeckLinks(await res.text(), origin);
+    let added = 0;
+    for (const link of found) {
+      if (seen.has(link)) continue;
+      seen.add(link);
+      links.push(link);
+      added++;
+    }
+    if (added === 0) break; // page param ignored or past the end
+    await sleep(300);
+  }
+  return links.slice(0, top);
+}
+
+const links = await collectLinks();
 if (links.length === 0) {
   console.error(
     '[meta] no deck links found on that page — if PA loads the list client-side, ' +
       'pass a listing URL that server-renders links (--url), or import decks one by one in the app.',
   );
   process.exit(1);
+}
+if (links.length < top) {
+  console.warn(
+    `[meta] only ${links.length} of ${top} decks found — if PA paginates with a ` +
+      "different param, browse to page 2 in the browser and pass that URL shape via --url " +
+      "(a {page} placeholder is supported, e.g. --url 'https://piltoverarchive.com/decks?p={page}').",
+  );
 }
 console.log(`[meta] found ${links.length} deck link(s), importing…`);
 
