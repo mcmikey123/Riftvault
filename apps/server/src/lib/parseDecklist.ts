@@ -6,9 +6,10 @@ import { parseCardRef, type CardRef } from './cardId.js';
  *   "3 Card Name"
  *   "3x Card Name"
  *   "Card Name x3"
- *   "3 OGN-045"        (card by ID)
- *   "OGN-045"          (qty 1 by ID)
- *   "Card Name"        (qty 1 — legend/champion lines in common exports)
+ *   "3 OGN-045"              (card by ID)
+ *   "3 Card Name (OGN-045)"  (official/PA export — ID wins, name kept as fallback)
+ *   "OGN-045"                (qty 1 by ID)
+ *   "Card Name"              (qty 1 — legend/champion lines in common exports)
  * Skipped: blank lines, comments (# or //), section headers ("Main Deck:",
  * "Battlefields (3)", known section words).
  */
@@ -17,7 +18,7 @@ export interface DecklistEntry {
   qty: number;
   /** Card name as written, when the line referenced a name. */
   name?: string;
-  /** Set/number reference, when the line referenced a card ID. */
+  /** Set/number reference; when both are present the ref is authoritative. */
   ref?: CardRef;
   raw: string;
 }
@@ -55,6 +56,24 @@ function isSectionHeader(line: string): boolean {
   return SECTION_WORDS.has(noCount.toLowerCase().trim());
 }
 
+/**
+ * "Jinx - Loose Cannon (OGN-251)" → name + authoritative ref.
+ * Parentheses that aren't a card ID stay part of the name.
+ */
+function entryFrom(qty: number, rest: string, raw: string): DecklistEntry {
+  const wholeRef = parseCardRef(rest);
+  if (wholeRef) return { qty, ref: wholeRef, raw };
+  const m = rest.match(/^(.*?)\s*\(([^()]+)\)\s*$/);
+  if (m) {
+    const ref = parseCardRef(m[2]!);
+    if (ref) {
+      const name = m[1]!.trim();
+      return name ? { qty, name, ref, raw } : { qty, ref, raw };
+    }
+  }
+  return { qty, name: rest, raw };
+}
+
 export function parseDecklist(text: string): DecklistParseResult {
   const entries: DecklistEntry[] = [];
   const unparsed: string[] = [];
@@ -65,14 +84,13 @@ export function parseDecklist(text: string): DecklistParseResult {
     if (line.startsWith('#') || line.startsWith('//')) continue;
     if (isSectionHeader(line)) continue;
 
-    // "3 Card Name" | "3x Card Name" | "3 OGN-045"
+    // "3 Card Name" | "3x Card Name" | "3 OGN-045" | "3 Card Name (OGN-045)"
     let m = line.match(/^(\d{1,2})\s*[xX]?\s+(.+)$/);
     if (m) {
       const qty = parseInt(m[1]!, 10);
       const rest = m[2]!.trim();
-      const ref = parseCardRef(rest);
       if (qty > 0 && rest) {
-        entries.push(ref ? { qty, ref, raw: line } : { qty, name: rest, raw: line });
+        entries.push(entryFrom(qty, rest, line));
         continue;
       }
     }
@@ -83,23 +101,15 @@ export function parseDecklist(text: string): DecklistParseResult {
     if (m) {
       const qty = parseInt(m[2]!, 10);
       const rest = m[1]!.trim();
-      const ref = parseCardRef(rest);
       if (qty > 0 && rest) {
-        entries.push(ref ? { qty, ref, raw: line } : { qty, name: rest, raw: line });
+        entries.push(entryFrom(qty, rest, line));
         continue;
       }
     }
 
-    // Bare card ID → qty 1
-    const ref = parseCardRef(line);
-    if (ref) {
-      entries.push({ qty: 1, ref, raw: line });
-      continue;
-    }
-
-    // Bare name → qty 1, as long as it looks like a name at all
-    if (/[a-zA-Z]{2,}/.test(line)) {
-      entries.push({ qty: 1, name: line, raw: line });
+    // Bare ID, "Name (OGN-045)", or bare name → qty 1 (legend lines)
+    if (parseCardRef(line) || /[a-zA-Z]{2,}/.test(line)) {
+      entries.push(entryFrom(1, line, line));
       continue;
     }
 

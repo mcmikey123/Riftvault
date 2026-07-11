@@ -44,9 +44,16 @@ export function resolveDeckEntries(db: Db, entries: DecklistEntry[]): ResolvedDe
   for (const entry of entries) {
     if (entry.ref) {
       const card = getCard(db, makeCardId(entry.ref.set_code, entry.ref.collector_number));
-      if (card) add(card, entry.qty);
-      else unresolved.push(entry.raw);
-      continue;
+      if (card) {
+        add(card, entry.qty);
+        continue;
+      }
+      // Ref not in the local DB — fall through to name resolution when the
+      // line carried a name too ("Card Name (OGN-045)" exports).
+      if (!entry.name) {
+        unresolved.push(entry.raw);
+        continue;
+      }
     }
 
     const name = entry.name ?? '';

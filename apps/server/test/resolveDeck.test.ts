@@ -24,6 +24,17 @@ describe('resolveDeckEntries', () => {
     expect(unresolved).toEqual(['4 Complete Nonsense Card']);
   });
 
+  it('resolves "Name (SET-NNN)" by ref, falling back to name for unknown refs', () => {
+    const db = seedDb();
+    const { entries } = parseDecklist(
+      '2 Void Gate (OGN-045)\n1 Jinx - Loose Cannon (OGN-999)', // second ref not in DB
+    );
+    const { cards, unresolved } = resolveDeckEntries(db, entries);
+    expect(cards.get('OGN-045')?.qty).toBe(2);
+    expect(cards.get('OGN-067')?.qty).toBe(1); // rescued via the name
+    expect(unresolved).toEqual([]);
+  });
+
   it('merges duplicate lines for the same card', () => {
     const db = seedDb();
     const { entries } = parseDecklist('2 Void Gate\n1 void gate');

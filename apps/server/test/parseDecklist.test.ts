@@ -71,6 +71,31 @@ describe('parseDecklist', () => {
     expect(unparsed).toEqual(['???']);
   });
 
+  it('parses "Name (SET-NNN)" exports with the ref authoritative and name kept', () => {
+    const { entries } = parseDecklist('1 Jinx - Loose Cannon (OGN-251)\n6 Chaos Rune (OGN-166)');
+    expect(entries).toEqual([
+      {
+        qty: 1,
+        name: 'Jinx - Loose Cannon',
+        ref: { set_code: 'OGN', collector_number: 251 },
+        raw: '1 Jinx - Loose Cannon (OGN-251)',
+      },
+      {
+        qty: 6,
+        name: 'Chaos Rune',
+        ref: { set_code: 'OGN', collector_number: 166 },
+        raw: '6 Chaos Rune (OGN-166)',
+      },
+    ]);
+  });
+
+  it('keeps non-ref parentheses as part of the name', () => {
+    const { entries } = parseDecklist('2 Fight or Flight (promo)');
+    expect(entries).toEqual([
+      { qty: 2, name: 'Fight or Flight (promo)', raw: '2 Fight or Flight (promo)' },
+    ]);
+  });
+
   it('does not mangle names ending in a word starting with x', () => {
     const { entries } = parseDecklist('2 Axiom Engine');
     expect(entries).toEqual([{ qty: 2, name: 'Axiom Engine', raw: '2 Axiom Engine' }]);
