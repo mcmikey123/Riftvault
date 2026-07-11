@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { Db } from '../db.js';
 import type { CardSource } from './cardSource/index.js';
+import { SET_NAMES } from './setNames.js';
 
 export interface SyncResult {
   fetched: number;
@@ -38,18 +39,49 @@ export async function syncCards(db: Db, source: CardSource): Promise<SyncResult>
   return { fetched: cards.length, inserted, updated };
 }
 
-/** Upsert set display names when the source can provide them. */
+/**
+ * Upsert set display names. Real names from the source win; otherwise the
+ * curated SET_NAMES map fills in. Codes with no name anywhere are left out
+ * of the table (the UI falls back to showing the code) and warned about.
+ */
 export async function syncSetNames(db: Db, source: CardSource): Promise<number> {
-  if (!source.fetchSets) return 0;
-  const sets = await source.fetchSets();
+  const fromSource = source.fetchSets ? await source.fetchSets() : [];
+  // A "name" identical to the code is not a name (the filters endpoint
+  // returns bare codes).
+  const sourceNames = new Map(
+    fromSource
+      .filter((s) => s.name && s.name.toUpperCase() !== s.code.toUpperCase())
+      .map((s) => [s.code, s.name]),
+  );
+  const codes = new Set<string>([
+    ...fromSource.map((s) => s.code),
+    ...(db.prepare('SELECT DISTINCT set_code FROM cards').all() as { set_code: string }[]).map(
+      (r) => r.set_code,
+    ),
+  ]);
+
   const upsert = db.prepare(
     `INSERT INTO sets (code, name) VALUES (@code, @name)
      ON CONFLICT(code) DO UPDATE SET name = @name`,
   );
+  let named = 0;
   db.transaction(() => {
-    for (const set of sets) upsert.run(set);
+    for (const code of codes) {
+      const name = sourceNames.get(code) ?? SET_NAMES[code];
+      if (!name) {
+        // Scrub code-as-name rows left by earlier syncs; the UI shows the
+        // code on its own until a real name exists.
+        db.prepare('DELETE FROM sets WHERE code = ? AND name = ?').run(code, code);
+        console.warn(
+          `[sync] no display name for set ${code} — add it to apps/server/src/lib/setNames.ts`,
+        );
+        continue;
+      }
+      upsert.run({ code, name });
+      named++;
+    }
   })();
-  return sets.length;
+  return named;
 }
 
 export interface ProductFixture {

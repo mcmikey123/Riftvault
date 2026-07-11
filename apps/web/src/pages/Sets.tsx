@@ -25,7 +25,9 @@ export function Sets() {
           <div className="row spread">
             <strong>
               {s.name ?? s.set_code}
-              {s.name && <span className="muted"> {s.set_code}</span>}
+              {s.name && s.name !== s.set_code && (
+                <span className="muted"> {s.set_code}</span>
+              )}
             </strong>
             <span className="muted">
               {s.owned_unique}/{s.card_count} unique · {s.owned_total} total
