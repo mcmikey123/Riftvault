@@ -6,7 +6,8 @@
  */
 export const SET_NAMES: Record<string, string> = {
   OGN: 'Origins',
+  SFD: 'Spiritforged',
   UNL: 'Unleashed',
-  // OGS: '…',  // TODO confirm on riftscribe.gg
-  // SFD: '…',  // TODO confirm on riftscribe.gg
+  // OGS: '…',  // 24 cards, unidentified — likely Origins starter/promo extras.
+  //             Check with: sqlite3 data/vault.db "SELECT id, name FROM cards WHERE set_code='OGS'"
 };
