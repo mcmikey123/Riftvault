@@ -16,73 +16,43 @@ export interface DeckImportSource {
   fetchDeck(url: string): Promise<DeckImportResult>;
 }
 
+const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
+
 /**
- * Piltover Archive deck pages. The community TTS importer parses these URLs
- * (resolving card data via the Riftseer API), so the pages are known to be
- * machine-readable — but the exact JSON shape wasn't verifiable when this
- * was written. Strategy: try likely JSON endpoints for the deck ID, fall
- * back to scraping <pre>/textarea-ish export blocks; if nothing parses, the
- * route returns a clear error telling you to paste the export text instead.
+ * Piltover Archive (piltoverarchive.com) is a Next.js app that server-renders
+ * deck pages with the full deck data embedded as escaped JSON in the RSC
+ * flight payload. Verified against a live deck page on 2026-07-11:
+ *   - deck entries:    {"deckId":…,"cardId":"<uuid>","variantId":"<uuid>","quantity":N}
+ *   - variant objects: {"id":"<variant uuid>",…,"variantNumber":"OGN-042",…}
+ *   - card objects:    {"id":"<card uuid>",…,"name":"Card Name",…}
+ * We join the three by UUID and emit decklist lines the normal parser reads.
  */
 export class PiltoverArchiveSource implements DeckImportSource {
   matches(url: string): boolean {
     try {
       const host = new URL(url).hostname;
-      return /piltoverarchive|pltar/i.test(host);
+      return /piltoverarchive/i.test(host);
     } catch {
       return false;
     }
   }
 
   async fetchDeck(url: string): Promise<DeckImportResult> {
-    const parsed = new URL(url);
-    const deckId = parsed.pathname.split('/').filter(Boolean).pop() ?? '';
-
-    // 1. Likely JSON API endpoints.
-    const apiCandidates = [
-      `${parsed.origin}/api/decks/${deckId}`,
-      `${parsed.origin}/api/deck/${deckId}`,
-      `${parsed.origin}/decks/${deckId}.json`,
-    ];
-    for (const api of apiCandidates) {
-      try {
-        const res = await fetch(api, { headers: { accept: 'application/json' } });
-        if (!res.ok) continue;
-        const body = (await res.json()) as Record<string, unknown>;
-        const text = deckJsonToText(body);
-        if (text) {
-          return {
-            name: typeof body.name === 'string' ? body.name : null,
-            archetype:
-              typeof body.archetype === 'string'
-                ? body.archetype
-                : typeof body.legend === 'string'
-                  ? body.legend
-                  : null,
-            text,
-          };
-        }
-      } catch {
-        // try next candidate
-      }
-    }
-
-    // 2. Fetch the page and look for an embedded export block.
     const res = await fetch(url, { headers: { accept: 'text/html' } });
     if (!res.ok) throw new Error(`fetch ${url} → ${res.status}`);
     const html = await res.text();
 
-    const pre = html.match(/<pre[^>]*>([\s\S]*?)<\/pre>/i) ??
+    const deckId = new URL(url).pathname.split('/').filter(Boolean).pop() ?? '';
+    const extracted = extractDeckFromNextHtml(html, deckId);
+    if (extracted) return extracted;
+
+    // Fallbacks: an embedded export block, else a clear error.
+    const pre =
+      html.match(/<pre[^>]*>([\s\S]*?)<\/pre>/i) ??
       html.match(/<textarea[^>]*>([\s\S]*?)<\/textarea>/i);
     if (pre && pre[1] && /\d\s*x?\s*\w/.test(pre[1])) {
-      const title = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-      return {
-        name: title ? decodeEntities(title[1]!.trim()) : null,
-        archetype: null,
-        text: decodeEntities(pre[1]),
-      };
+      return { name: titleOf(html), archetype: null, text: decodeEntities(pre[1]) };
     }
-
     throw new Error(
       'Could not extract a decklist from that URL — the page structure may have ' +
         'changed. Paste the deck export text instead (and see deckImport.ts).',
@@ -90,36 +60,71 @@ export class PiltoverArchiveSource implements DeckImportSource {
   }
 }
 
-/** Convert a plausible deck JSON payload into decklist text lines. */
-function deckJsonToText(body: Record<string, unknown>): string | null {
-  const listKeys = ['cards', 'deck_cards', 'deckCards', 'main', 'maindeck', 'list'];
-  for (const key of listKeys) {
-    const list = body[key];
-    if (!Array.isArray(list) || list.length === 0) continue;
-    const lines: string[] = [];
-    for (const item of list) {
-      if (!item || typeof item !== 'object') continue;
-      const o = item as Record<string, unknown>;
-      const qty = Number(o.qty ?? o.quantity ?? o.count ?? 1);
-      const cardObj = (o.card ?? null) as Record<string, unknown> | null;
-      const id =
-        typeof o.card_id === 'string'
-          ? o.card_id
-          : cardObj && typeof cardObj.id === 'string'
-            ? cardObj.id
-            : null;
-      const name =
-        typeof o.name === 'string'
-          ? o.name
-          : cardObj && typeof cardObj.name === 'string'
-            ? cardObj.name
-            : null;
-      if (id) lines.push(`${qty} ${id}`);
-      else if (name) lines.push(`${qty} ${name}`);
-    }
-    if (lines.length > 0) return lines.join('\n');
+/**
+ * Pure extraction from the fetched HTML — exported for unit tests.
+ * Returns null when the flight-payload structures aren't found.
+ */
+export function extractDeckFromNextHtml(
+  html: string,
+  deckId: string,
+): DeckImportResult | null {
+  // Flight payloads escape quotes (\" in the raw HTML); normalise once.
+  const clean = html.replace(/\\"/g, '"');
+
+  // variantId → collector code ("OGN-042"), from variant objects.
+  const variantToNumber = new Map<string, string>();
+  for (const m of clean.matchAll(
+    new RegExp(`"id":"(${UUID})"[^{}\\[\\]]{0,500}?"variantNumber":"([A-Za-z]{2,5}-[A-Za-z0-9]{1,6})"`, 'g'),
+  )) {
+    if (!variantToNumber.has(m[1]!)) variantToNumber.set(m[1]!, m[2]!);
   }
-  return null;
+
+  // cardId → name, from card objects (tolerant: any object pairing a uuid id
+  // with a name; only consulted for uuids referenced by deck entries).
+  const uuidToName = new Map<string, string>();
+  for (const m of clean.matchAll(
+    new RegExp(`"id":"(${UUID})"[^{}\\[\\]]{0,300}?"name":"([^"]{1,120})"`, 'g'),
+  )) {
+    if (!uuidToName.has(m[1]!)) uuidToName.set(m[1]!, m[2]!);
+  }
+
+  // Deck entries. The RSC payload can repeat; dedupe by variantId.
+  const seen = new Set<string>();
+  const lines: string[] = [];
+  for (const m of clean.matchAll(
+    new RegExp(`"cardId":"(${UUID})","variantId":"(${UUID})","quantity":(\\d+)`, 'g'),
+  )) {
+    const [, cardId, variantId, qtyStr] = m;
+    if (seen.has(variantId!)) continue;
+    seen.add(variantId!);
+    const qty = parseInt(qtyStr!, 10);
+    if (qty <= 0) continue;
+    const number = variantToNumber.get(variantId!);
+    const name = uuidToName.get(cardId!);
+    if (name && number) lines.push(`${qty} ${decodeEntities(name)} (${number})`);
+    else if (number) lines.push(`${qty} ${number}`);
+    else if (name) lines.push(`${qty} ${decodeEntities(name)}`);
+  }
+  if (lines.length === 0) return null;
+
+  // Deck name: the deck object itself, else the page title.
+  let name: string | null = null;
+  if (deckId) {
+    const dm = clean.match(
+      new RegExp(`"id":"${deckId}"[^{}\\[\\]]{0,400}?"name":"([^"]{1,120})"`),
+    );
+    if (dm) name = decodeEntities(dm[1]!);
+  }
+  name ??= titleOf(html);
+
+  return { name, archetype: null, text: lines.join('\n') };
+}
+
+function titleOf(html: string): string | null {
+  const m = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+  if (!m) return null;
+  // "Deck Name | Piltover Archive" → "Deck Name"
+  return decodeEntities(m[1]!.split(/\s*[|–—]\s*/)[0]!.trim()) || null;
 }
 
 function decodeEntities(s: string): string {
