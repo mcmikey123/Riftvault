@@ -1,0 +1,25 @@
+{
+  "name": "riftbound-vault",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Personal collection tracker for the Riftbound TCG",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm-run-all --parallel dev:server dev:web",
+    "dev:server": "npm run dev -w apps/server",
+    "dev:web": "npm run dev -w apps/web",
+    "build": "npm run typecheck -w apps/server && npm run build -w apps/web",
+    "test": "npm run test -w apps/server",
+    "sync-cards": "npm run sync-cards -w apps/server",
+    "start": "npm run start -w apps/server"
+  },
+  "devDependencies": {
+    "npm-run-all": "^4.1.5"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,0 +1,11 @@
+# Caddy site block for Riftbound Vault. Basic auth covers everything
+# (VAULT_KEY on the server is then optional belt-and-braces).
+# Generate the hash with: caddy hash-password
+
+vault.example.com {
+	basic_auth {
+		me $2a$14$REPLACE_WITH_CADDY_HASH_PASSWORD_OUTPUT
+	}
+	reverse_proxy 127.0.0.1:8787
+	encode gzip
+}
