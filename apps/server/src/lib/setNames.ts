@@ -8,7 +8,8 @@ export const SET_NAMES: Record<string, string> = {
   OGN: 'Origins',
   SFD: 'Spiritforged',
   UNL: 'Unleashed',
-  // 24 starter-deck exclusives (Annie/Yi/Lux/Garen, cards suffixed "- Starter").
-  // Rename here if you prefer the official box name.
-  OGS: 'Origins Starter',
+  // Starter-deck exclusives; official name per TCGplayer's group listing.
+  OGS: 'Origins: Proving Grounds',
+  // Announced 5th set; name confirmed by TCGplayer's group listing (2026-07).
+  VEN: 'Vendetta',
 };

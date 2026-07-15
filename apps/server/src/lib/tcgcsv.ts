@@ -166,6 +166,13 @@ export class TcgCsvPriceSource implements PriceSource {
     const out = new Map<string, CardPrice>();
     for (const group of groups) {
       const groupSet = matchGroupSet(group, index.setCodes, setNames);
+      // Groups that map to no local set are promos or not-yet-synced sets.
+      // Never name-match those: a judge-promo "Void Gate" price must not
+      // overwrite the base printing's price.
+      if (!groupSet) {
+        console.log(`[tcgcsv] ${group.name}: no matching set — skipped (promo/future set)`);
+        continue;
+      }
       let products: TcgProduct[];
       let priceRows: TcgPriceRow[];
       try {
