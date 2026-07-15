@@ -115,4 +115,55 @@ for (let i = 0; i < links.length; i++) {
 }
 
 console.log(`[meta] done: ${ok} imported/updated, ${failed} failed`);
+
+// ---- Champion coverage ----------------------------------------------------
+// Tag each meta deck's archetype with its legend/champion card and report
+// which champions have no meta deck yet, so gaps can be filled by URL.
+const legendPattern = (() => {
+  for (const pattern of ['%legend%', '%champion%']) {
+    const n = db
+      .prepare("SELECT COUNT(*) AS n FROM cards WHERE lower(COALESCE(type,'')) LIKE ?")
+      .get(pattern) as { n: number };
+    if (n.n > 0) return pattern;
+  }
+  return null;
+})();
+
+if (legendPattern) {
+  db.prepare(
+    `UPDATE decks SET archetype = (
+       SELECT c.name FROM deck_cards dc JOIN cards c ON c.id = dc.card_id
+       WHERE dc.deck_id = decks.id AND lower(COALESCE(c.type,'')) LIKE ?
+       ORDER BY c.set_code, c.collector_number LIMIT 1
+     )
+     WHERE kind = 'meta' AND archetype IS NULL`,
+  ).run(legendPattern);
+
+  const all = db
+    .prepare("SELECT DISTINCT name FROM cards WHERE lower(COALESCE(type,'')) LIKE ? ORDER BY name")
+    .all(legendPattern) as { name: string }[];
+  const covered = new Set(
+    (
+      db
+        .prepare(
+          `SELECT DISTINCT c.name FROM decks d
+           JOIN deck_cards dc ON dc.deck_id = d.id
+           JOIN cards c ON c.id = dc.card_id
+           WHERE d.kind = 'meta' AND lower(COALESCE(c.type,'')) LIKE ?`,
+        )
+        .all(legendPattern) as { name: string }[]
+    ).map((r) => r.name),
+  );
+  const missing = all.filter((l) => !covered.has(l.name));
+  console.log(`[meta] champion coverage: ${covered.size}/${all.length}`);
+  if (missing.length > 0) {
+    console.log('[meta] champions with NO meta deck yet:');
+    for (const m of missing) console.log(`  - ${m.name}`);
+    console.log(
+      '[meta] fill gaps by importing a deck URL per champion in the app, or re-run with a bigger --top / a champion-filtered PA listing via --url.',
+    );
+  }
+} else {
+  console.log("[meta] couldn't identify legend/champion card types — coverage report skipped");
+}
 console.log('[meta] open the Buildable screen to see the ranking.');
