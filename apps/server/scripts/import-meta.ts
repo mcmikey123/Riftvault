@@ -30,6 +30,18 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const db = getDb();
 const source = new PiltoverArchiveSource();
 
+// --clear wipes all meta decks before importing; --clear-only just wipes.
+if (process.argv.includes('--clear') || process.argv.includes('--clear-only')) {
+  const wiped = db.transaction(() => {
+    db.prepare(
+      "DELETE FROM deck_cards WHERE deck_id IN (SELECT id FROM decks WHERE kind = 'meta')",
+    ).run();
+    return db.prepare("DELETE FROM decks WHERE kind = 'meta'").run().changes;
+  })();
+  console.log(`[meta] cleared ${wiped} meta deck(s)`);
+  if (process.argv.includes('--clear-only')) process.exit(0);
+}
+
 /** Page 1 is the URL as given; later pages get ?page=N (or a {page} placeholder). */
 function withPage(url: string, page: number): string {
   if (url.includes('{page}')) return url.replace('{page}', String(page));
