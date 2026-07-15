@@ -19,9 +19,18 @@ export interface CardPrice {
   currency: string;
 }
 
+/** What a price source gets to match against. */
+export interface PriceCardInfo {
+  id: string;
+  name: string;
+  set_code: string;
+  collector_number: number;
+  raw_json: string | null;
+}
+
 export interface PriceSource {
   name: string;
-  fetchPrices(cards: { id: string; raw_json: string | null }[]): Promise<Map<string, CardPrice>>;
+  fetchPrices(cards: PriceCardInfo[]): Promise<Map<string, CardPrice>>;
 }
 
 /** Flatten nested objects to dotted paths, shallow arrays included. */
@@ -80,7 +89,7 @@ export function extractPriceFromRaw(raw: unknown): CardPrice | null {
 export class RawJsonPriceSource implements PriceSource {
   name = 'riftscribe-raw';
 
-  fetchPrices(cards: { id: string; raw_json: string | null }[]): Promise<Map<string, CardPrice>> {
+  fetchPrices(cards: PriceCardInfo[]): Promise<Map<string, CardPrice>> {
     const map = new Map<string, CardPrice>();
     for (const card of cards) {
       if (!card.raw_json) continue;
@@ -95,6 +104,26 @@ export class RawJsonPriceSource implements PriceSource {
   }
 }
 
+/** Pick the configured price source (PRICE_SOURCE env: tcgcsv | raw). */
+export async function getPriceSource(db: Db, kind: string): Promise<PriceSource> {
+  switch (kind) {
+    case 'tcgcsv': {
+      const { TcgCsvPriceSource } = await import('./tcgcsv.js');
+      const setNames = new Map(
+        (db.prepare('SELECT code, name FROM sets').all() as { code: string; name: string }[]).map(
+          (r) => [r.code, r.name],
+        ),
+      );
+      return new TcgCsvPriceSource(setNames);
+    }
+    case 'raw':
+    case 'riftscribe-raw':
+      return new RawJsonPriceSource();
+    default:
+      throw new Error(`unknown PRICE_SOURCE '${kind}' (expected tcgcsv|raw)`);
+  }
+}
+
 export interface PriceSyncResult {
   priced: number;
   total: number;
@@ -102,10 +131,9 @@ export interface PriceSyncResult {
 }
 
 export async function syncPrices(db: Db, source: PriceSource): Promise<PriceSyncResult> {
-  const cards = db.prepare('SELECT id, raw_json FROM cards').all() as {
-    id: string;
-    raw_json: string | null;
-  }[];
+  const cards = db
+    .prepare('SELECT id, name, set_code, collector_number, raw_json FROM cards')
+    .all() as PriceCardInfo[];
   const prices = await source.fetchPrices(cards);
 
   const upsert = db.prepare(

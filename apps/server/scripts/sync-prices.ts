@@ -1,18 +1,18 @@
 /**
- * Refresh card prices into card_prices. Currently sources prices from the
- * RiftScribe payloads stored in cards.raw_json (run sync-cards first to
- * refresh those). If coverage comes back 0/NNN it prints the payload's
- * actual field names — use that to pin a real price source in
- * apps/server/src/lib/prices.ts.
+ * Refresh card prices into card_prices. Default source is tcgcsv.com — a
+ * free daily mirror of TCGplayer's market prices (Riftbound = category 89).
+ * Override with PRICE_SOURCE=raw to extract from stored RiftScribe payloads
+ * instead (they carry no prices as of 2026-07, kept for completeness).
  */
 import { getDb } from '../src/db.js';
-import { RawJsonPriceSource, syncPrices } from '../src/lib/prices.js';
+import { env } from '../src/env.js';
+import { getPriceSource, syncPrices } from '../src/lib/prices.js';
 
 const db = getDb();
-const result = await syncPrices(db, new RawJsonPriceSource());
+const source = await getPriceSource(db, env.priceSource);
+console.log(`[prices] source: ${source.name}`);
+const result = await syncPrices(db, source);
 console.log(`[prices] priced ${result.priced}/${result.total} cards`);
-if (result.sample_fields) {
-  console.log('[prices] no price fields found. Payload fields present:');
-  for (const field of result.sample_fields) console.log(`  - ${field}`);
-  console.log('[prices] → pin a price source in apps/server/src/lib/prices.ts');
+if (result.priced === 0) {
+  console.log('[prices] nothing priced — check the log above for group/product match details');
 }

@@ -26,11 +26,12 @@ const sets = db
   .all() as { set_code: string; n: number }[];
 for (const s of sets) console.log(`[sync]   ${s.set_code}: ${s.n} cards`);
 
-// Prices ride along with the card payloads — refresh them too (non-fatal).
+// Refresh prices too (non-fatal — cards still sync if the price source is down).
 try {
-  const { RawJsonPriceSource, syncPrices } = await import('../src/lib/prices.js');
-  const prices = await syncPrices(db, new RawJsonPriceSource());
-  console.log(`[sync] prices: ${prices.priced}/${prices.total} cards priced`);
+  const { getPriceSource, syncPrices } = await import('../src/lib/prices.js');
+  const source = await getPriceSource(db, env.priceSource);
+  const prices = await syncPrices(db, source);
+  console.log(`[sync] prices (${source.name}): ${prices.priced}/${prices.total} cards priced`);
 } catch (err) {
   console.warn(`[sync] price refresh failed: ${(err as Error).message}`);
 }

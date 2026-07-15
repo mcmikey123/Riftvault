@@ -18,6 +18,10 @@ export const env = {
   scanModelFallback: process.env.SCAN_MODEL_FALLBACK || 'claude-sonnet-4-6',
   cardSource: process.env.CARD_SOURCE || 'riftscribe',
   riftscribeBase: process.env.RIFTSCRIBE_BASE || 'https://riftscribe.gg',
+  priceSource: process.env.PRICE_SOURCE || 'tcgcsv',
+  tcgcsvBase: process.env.TCGCSV_BASE || 'https://tcgcsv.com',
+  /** TCGplayer category id for Riftbound on tcgcsv.com (verified 2026-07). */
+  tcgcsvCategoryId: Number(process.env.TCGCSV_CATEGORY_ID || 89),
   productsDir:
     process.env.PRODUCTS_DIR || path.join(repoRoot, 'packages/data/products'),
   webDist: process.env.WEB_DIST || path.join(repoRoot, 'apps/web/dist'),
