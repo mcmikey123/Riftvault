@@ -139,7 +139,14 @@ export class TcgCsvPriceSource implements PriceSource {
   }
 
   private async getResults<T>(path: string): Promise<T[]> {
-    const res = await fetch(`${this.base}${path}`, { headers: { accept: 'application/json' } });
+    const res = await fetch(`${this.base}${path}`, {
+      headers: {
+        accept: 'application/json',
+        // tcgcsv's CDN rejects requests without a User-Agent (Node fetch
+        // sends none by default) — identify ourselves honestly.
+        'user-agent': 'riftbound-vault/0.1 (personal collection tracker)',
+      },
+    });
     if (!res.ok) throw new Error(`GET ${this.base}${path} → ${res.status}`);
     const body = (await res.json()) as { results?: T[] } | T[];
     if (Array.isArray(body)) return body;
