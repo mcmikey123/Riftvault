@@ -15,6 +15,19 @@ export interface VaultRow extends Card {
   qty: number;
   qty_foil: number;
   updated_at: string;
+  /** Latest known market price per copy; null until a price source covers this card. */
+  price?: number | null;
+  price_foil?: number | null;
+  currency?: string | null;
+  price_updated_at?: string | null;
+}
+
+/** Line value of a vault row: regular copies + foils (foil price falls back to regular). */
+export function rowValue(row: VaultRow): number | null {
+  const price = row.price ?? null;
+  const foilPrice = row.price_foil ?? price;
+  if (price === null && foilPrice === null) return null;
+  return row.qty * (price ?? 0) + row.qty_foil * (foilPrice ?? 0);
 }
 
 export type EntrySource =

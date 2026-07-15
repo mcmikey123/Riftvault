@@ -90,6 +90,15 @@ CREATE TABLE IF NOT EXISTS deck_cards (
   PRIMARY KEY (deck_id, card_id)
 );
 
+CREATE TABLE IF NOT EXISTS card_prices (
+  card_id TEXT PRIMARY KEY REFERENCES cards(id),
+  price REAL,
+  price_foil REAL,
+  currency TEXT NOT NULL DEFAULT 'USD',
+  source TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS scan_usage (
   date TEXT PRIMARY KEY,
   requests INTEGER NOT NULL DEFAULT 0,

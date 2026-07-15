@@ -15,8 +15,11 @@ export function vaultRoutes(db: Db) {
     const rows = db
       .prepare(
         `SELECT c.id, c.set_code, c.collector_number, c.name, c.type, c.faction, c.rarity,
-                c.image_url, v.qty, v.qty_foil, v.updated_at
-         FROM vault v JOIN cards c ON c.id = v.card_id
+                c.image_url, v.qty, v.qty_foil, v.updated_at,
+                p.price, p.price_foil, p.currency, p.updated_at AS price_updated_at
+         FROM vault v
+         JOIN cards c ON c.id = v.card_id
+         LEFT JOIN card_prices p ON p.card_id = v.card_id
          WHERE v.user_id = ? AND (v.qty > 0 OR v.qty_foil > 0)
          ORDER BY c.set_code, c.collector_number`,
       )

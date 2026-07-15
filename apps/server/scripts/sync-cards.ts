@@ -25,3 +25,12 @@ const sets = db
   .prepare('SELECT set_code, COUNT(*) AS n FROM cards GROUP BY set_code ORDER BY set_code')
   .all() as { set_code: string; n: number }[];
 for (const s of sets) console.log(`[sync]   ${s.set_code}: ${s.n} cards`);
+
+// Prices ride along with the card payloads — refresh them too (non-fatal).
+try {
+  const { RawJsonPriceSource, syncPrices } = await import('../src/lib/prices.js');
+  const prices = await syncPrices(db, new RawJsonPriceSource());
+  console.log(`[sync] prices: ${prices.priced}/${prices.total} cards priced`);
+} catch (err) {
+  console.warn(`[sync] price refresh failed: ${(err as Error).message}`);
+}

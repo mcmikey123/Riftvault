@@ -17,6 +17,7 @@
     "make-product": "npm run make-product -w apps/server --",
     "import-meta": "npm run import-meta -w apps/server --",
     "add-user": "npm run add-user -w apps/server --",
+    "sync-prices": "npm run sync-prices -w apps/server",
     "start": "npm run start -w apps/server"
   },
   "devDependencies": {

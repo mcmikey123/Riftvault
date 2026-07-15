@@ -11,7 +11,8 @@
     "sync-cards": "tsx scripts/sync-cards.ts",
     "make-product": "tsx scripts/make-product.ts",
     "import-meta": "tsx scripts/import-meta.ts",
-    "add-user": "tsx scripts/add-user.ts"
+    "add-user": "tsx scripts/add-user.ts",
+    "sync-prices": "tsx scripts/sync-prices.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.111.0",
