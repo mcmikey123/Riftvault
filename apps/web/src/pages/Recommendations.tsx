@@ -43,9 +43,19 @@ export function Recommendations() {
         </Link>
       ))}
 
-      {rest.length > 0 && <h2>Closest to complete</h2>}
-      {rest.map((score) => (
-        <Link key={score.deck.id} to={`/decks/${score.deck.id}`} className="panel stack">
+      {rest.map((score, i) => {
+        const tier = score.deck.meta_tier ?? null;
+        const prevTier = i > 0 ? (rest[i - 1]!.deck.meta_tier ?? null) : undefined;
+        const header =
+          tier !== prevTier ? (
+            <h2>
+              {tier != null ? `Tier ${tier}` : 'Unrated'} — closest to complete
+            </h2>
+          ) : null;
+        return (
+          <div key={score.deck.id} className="stack">
+            {header}
+            <Link to={`/decks/${score.deck.id}`} className="panel stack">
           <div className="row spread">
             <strong>
               {score.deck.meta_tier != null && (
@@ -77,8 +87,10 @@ export function Recommendations() {
               <span className="badge">+{score.missing.length - 6} more</span>
             )}
           </div>
-        </Link>
-      ))}
+            </Link>
+          </div>
+        );
+      })}
 
       {data.most_wanted.length > 0 && (
         <>
