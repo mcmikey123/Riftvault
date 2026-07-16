@@ -1,11 +1,16 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import type { RecommendationsResponse } from '@riftvault/types';
+import type { DeckScore, RecommendationsResponse } from '@riftvault/types';
 import { api } from '../api';
 
-/** "What can I build?" — meta decks ranked by buildability + most-wanted pickups. */
+/**
+ * "What can I build?" — meta decks vs the vault. Two orderings:
+ *  - completion (default): closest to complete first, tier shown as a badge
+ *  - tier: riftbound.gg tier groups (T1 first), completion within each
+ */
 export function Recommendations() {
   const [data, setData] = useState<RecommendationsResponse | null>(null);
+  const [sortMode, setSortMode] = useState<'completion' | 'tier'>('completion');
   const [err, setErr] = useState('');
 
   useEffect(() => {
@@ -16,15 +21,73 @@ export function Recommendations() {
   if (!data) return <p className="muted">Loading…</p>;
 
   const ready = data.decks.filter((d) => d.ready);
+  // Server order is tier-first; completion mode re-sorts client-side.
   const rest = data.decks.filter((d) => !d.ready);
+  const list =
+    sortMode === 'completion'
+      ? [...rest].sort((a, b) => b.completion - a.completion || a.cost_proxy - b.cost_proxy)
+      : rest;
+
+  const deckCard = (score: DeckScore) => (
+    <Link to={`/decks/${score.deck.id}`} className="panel stack">
+      <div className="row spread">
+        <strong>
+          {score.deck.meta_tier != null && (
+            <span className="badge accent" style={{ marginRight: 6 }}>
+              T{score.deck.meta_tier}
+            </span>
+          )}
+          {score.deck.name}
+        </strong>
+        <span>
+          {score.nearly_there && <span className="badge amber">nearly there</span>}{' '}
+          {Math.round(score.completion * 100)}%
+        </span>
+      </div>
+      <div className="progress">
+        <div style={{ width: `${Math.round(score.completion * 100)}%` }} />
+      </div>
+      <div className="muted">
+        {score.missing_count} copies short ({score.missing_unique} distinct) · cost ~
+        {score.cost_proxy}
+      </div>
+      <div className="row wrap">
+        {score.missing.slice(0, 6).map((r) => (
+          <span key={r.card.id} className="badge">
+            {r.need - Math.min(r.have, r.need)}× {r.card.name}
+          </span>
+        ))}
+        {score.missing.length > 6 && (
+          <span className="badge">+{score.missing.length - 6} more</span>
+        )}
+      </div>
+    </Link>
+  );
 
   return (
     <div className="stack">
-      <h1>Buildable decks</h1>
+      <div className="row spread">
+        <h1 style={{ margin: 0 }}>Buildable decks</h1>
+        <div className="row">
+          <button
+            className={`small ${sortMode === 'completion' ? 'primary' : ''}`}
+            onClick={() => setSortMode('completion')}
+          >
+            By completion
+          </button>
+          <button
+            className={`small ${sortMode === 'tier' ? 'primary' : ''}`}
+            onClick={() => setSortMode('tier')}
+          >
+            By tier
+          </button>
+        </div>
+      </div>
+
       {data.decks.length === 0 && (
         <p className="muted">
-          No meta decks yet — import some on the <Link to="/decks">Decks</Link> screen with kind
-          “Meta deck”.
+          No meta decks yet — run <code>npm run import-meta</code> on the server, or import lists
+          on the <Link to="/decks">Decks</Link> screen with kind “Meta deck”.
         </p>
       )}
 
@@ -43,54 +106,27 @@ export function Recommendations() {
         </Link>
       ))}
 
-      {rest.map((score, i) => {
-        const tier = score.deck.meta_tier ?? null;
-        const prevTier = i > 0 ? (rest[i - 1]!.deck.meta_tier ?? null) : undefined;
-        const header =
-          tier !== prevTier ? (
-            <h2>
-              {tier != null ? `Tier ${tier}` : 'Unrated'} — closest to complete
-            </h2>
-          ) : null;
-        return (
-          <div key={score.deck.id} className="stack">
-            {header}
-            <Link to={`/decks/${score.deck.id}`} className="panel stack">
-          <div className="row spread">
-            <strong>
-              {score.deck.meta_tier != null && (
-                <span className="badge accent" style={{ marginRight: 6 }}>
-                  T{score.deck.meta_tier}
-                </span>
+      {sortMode === 'completion' ? (
+        <>
+          {list.length > 0 && <h2>Closest to complete</h2>}
+          {list.map((score) => (
+            <div key={score.deck.id}>{deckCard(score)}</div>
+          ))}
+        </>
+      ) : (
+        list.map((score, i) => {
+          const tier = score.deck.meta_tier ?? null;
+          const prevTier = i > 0 ? (list[i - 1]!.deck.meta_tier ?? null) : undefined;
+          return (
+            <div key={score.deck.id} className="stack">
+              {tier !== prevTier && (
+                <h2>{tier != null ? `Tier ${tier}` : 'Unrated'} — closest to complete</h2>
               )}
-              {score.deck.name}
-            </strong>
-            <span>
-              {score.nearly_there && <span className="badge amber">nearly there</span>}{' '}
-              {Math.round(score.completion * 100)}%
-            </span>
-          </div>
-          <div className="progress">
-            <div style={{ width: `${Math.round(score.completion * 100)}%` }} />
-          </div>
-          <div className="muted">
-            {score.missing_count} copies short ({score.missing_unique} distinct) · cost ~
-            {score.cost_proxy}
-          </div>
-          <div className="row wrap">
-            {score.missing.slice(0, 6).map((r) => (
-              <span key={r.card.id} className="badge">
-                {r.need - Math.min(r.have, r.need)}× {r.card.name}
-              </span>
-            ))}
-            {score.missing.length > 6 && (
-              <span className="badge">+{score.missing.length - 6} more</span>
-            )}
-          </div>
-            </Link>
-          </div>
-        );
-      })}
+              {deckCard(score)}
+            </div>
+          );
+        })
+      )}
 
       {data.most_wanted.length > 0 && (
         <>
