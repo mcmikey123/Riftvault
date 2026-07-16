@@ -77,10 +77,16 @@ export function scoreDeck(rows: DeckRequirement[]): Score {
   };
 }
 
-/** Highest completion first, cost_proxy as tiebreaker (cheaper to finish wins). */
+/**
+ * Meta tier first (T1 best; unrated sinks below T5), then highest completion,
+ * then cost_proxy (cheaper to finish wins). "Which deck should I play?" reads
+ * top-to-bottom as: the highest-tier deck you're closest to owning.
+ */
 export function rankDecks(scores: DeckScore[]): DeckScore[] {
+  const tierOf = (s: DeckScore) => s.deck.meta_tier ?? 9;
   return [...scores].sort(
     (a, b) =>
+      tierOf(a) - tierOf(b) ||
       b.completion - a.completion ||
       a.cost_proxy - b.cost_proxy ||
       (a.deck.popularity_rank ?? Infinity) - (b.deck.popularity_rank ?? Infinity),

@@ -77,7 +77,7 @@ function fakeScore(id: number, completion: number, cost: number, missing: DeckSc
 }
 
 describe('rankDecks', () => {
-  it('ranks by completion desc then cost_proxy asc', () => {
+  it('ranks by completion desc then cost_proxy asc when untiered', () => {
     const ranked = rankDecks([
       fakeScore(1, 0.8, 10),
       fakeScore(2, 0.95, 20),
@@ -85,6 +85,16 @@ describe('rankDecks', () => {
       fakeScore(4, 1, 0),
     ]);
     expect(ranked.map((r) => r.deck.id)).toEqual([4, 3, 2, 1]);
+  });
+
+  it('ranks meta tier first: a T1 deck beats a more complete T5 deck', () => {
+    const t5 = fakeScore(1, 1, 0);
+    t5.deck.meta_tier = 5;
+    const t1 = fakeScore(2, 0.4, 50);
+    t1.deck.meta_tier = 1;
+    const unrated = fakeScore(3, 1, 0); // meta_tier undefined → sinks last
+    const ranked = rankDecks([t5, unrated, t1]);
+    expect(ranked.map((r) => r.deck.id)).toEqual([2, 1, 3]);
   });
 });
 

@@ -77,6 +77,7 @@ CREATE TABLE IF NOT EXISTS decks (
   source_url TEXT,
   archetype TEXT,
   popularity_rank INTEGER,
+  meta_tier INTEGER,
   source_text TEXT NOT NULL,
   unresolved_json TEXT NOT NULL DEFAULT '[]',
   created_at TEXT NOT NULL,
@@ -184,6 +185,9 @@ export function createDb(dbPath: string, seedUserKey?: string): Db {
   // otherwise coexist with them; migration is a no-op on fresh/new DBs.
   db.exec(SCHEMA);
   migrateLegacy(db, seedUserKey);
+  if (tableExists(db, 'decks') && !hasColumn(db, 'decks', 'meta_tier')) {
+    db.exec('ALTER TABLE decks ADD COLUMN meta_tier INTEGER');
+  }
   return db;
 }
 

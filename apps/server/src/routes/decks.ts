@@ -15,6 +15,7 @@ interface DeckRow {
   source_url: string | null;
   archetype: string | null;
   popularity_rank: number | null;
+  meta_tier: number | null;
   source_text: string;
   unresolved_json: string;
   created_at: string;
@@ -34,6 +35,7 @@ export function deckToJson(db: Db, row: DeckRow) {
     source_url: row.source_url,
     archetype: row.archetype,
     popularity_rank: row.popularity_rank,
+    meta_tier: row.meta_tier,
     source_text: row.source_text,
     created_at: row.created_at,
     updated_at: row.updated_at,

@@ -13,7 +13,7 @@ export function recommendationsRoutes(db: Db) {
   app.get('/recommendations', (c) => {
     const decks = db
       .prepare(
-        `SELECT id, name, kind, archetype, popularity_rank, source_url
+        `SELECT id, name, kind, archetype, popularity_rank, meta_tier, source_url
          FROM decks WHERE kind = 'meta'`,
       )
       .all() as DeckScore['deck'][];

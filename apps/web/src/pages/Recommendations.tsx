@@ -31,7 +31,14 @@ export function Recommendations() {
       {ready.length > 0 && <h2>Ready to build 🎉</h2>}
       {ready.map((score) => (
         <Link key={score.deck.id} to={`/decks/${score.deck.id}`} className="panel row spread">
-          <strong>{score.deck.name}</strong>
+          <strong>
+            {score.deck.meta_tier != null && (
+              <span className="badge accent" style={{ marginRight: 6 }}>
+                T{score.deck.meta_tier}
+              </span>
+            )}
+            {score.deck.name}
+          </strong>
           <span className="badge green">100%</span>
         </Link>
       ))}
@@ -40,7 +47,14 @@ export function Recommendations() {
       {rest.map((score) => (
         <Link key={score.deck.id} to={`/decks/${score.deck.id}`} className="panel stack">
           <div className="row spread">
-            <strong>{score.deck.name}</strong>
+            <strong>
+              {score.deck.meta_tier != null && (
+                <span className="badge accent" style={{ marginRight: 6 }}>
+                  T{score.deck.meta_tier}
+                </span>
+              )}
+              {score.deck.name}
+            </strong>
             <span>
               {score.nearly_there && <span className="badge amber">nearly there</span>}{' '}
               {Math.round(score.completion * 100)}%

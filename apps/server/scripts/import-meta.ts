@@ -128,9 +128,7 @@ for (let i = 0; i < links.length; i++) {
 
 console.log(`[meta] done: ${ok} imported/updated, ${failed} failed`);
 
-// ---- Champion coverage ----------------------------------------------------
-// Tag each meta deck's archetype with its legend/champion card and report
-// which champions have no meta deck yet, so gaps can be filled by URL.
+// ---- Archetype tagging ------------------------------------------------------
 const legendPattern = (() => {
   for (const pattern of ['%legend%', '%champion%']) {
     const n = db
@@ -150,32 +148,84 @@ if (legendPattern) {
      )
      WHERE kind = 'meta' AND archetype IS NULL`,
   ).run(legendPattern);
+}
 
-  const all = db
-    .prepare("SELECT DISTINCT name FROM cards WHERE lower(COALESCE(type,'')) LIKE ? ORDER BY name")
-    .all(legendPattern) as { name: string }[];
-  const covered = new Set(
-    (
+// ---- Tiers from riftbound.gg ------------------------------------------------
+// Requirements: the meta pool is tier 1–4 champions; every champion on the
+// tier list keeps at least one deck (tier-5 champions keep exactly their
+// best-ranked deck). Decks matching no tier-list champion are kept but
+// unranked — deleting on a failed match would silently lose real decks.
+try {
+  const { fetchTierList, deckTier } = await import('../src/lib/tierList.js');
+  const { normalizeName } = await import('../src/lib/normalize.js');
+  const entries = await fetchTierList();
+  if (entries.length === 0) throw new Error('tier list parsed to zero entries');
+  console.log(
+    `[meta] riftbound.gg tier list: ${entries.length} champions — ` +
+      entries.map((e) => `${e.slug}=T${e.tier}`).join(', '),
+  );
+
+  const metaDecks = db
+    .prepare("SELECT id, name, popularity_rank FROM decks WHERE kind = 'meta'")
+    .all() as { id: number; name: string; popularity_rank: number | null }[];
+
+  const byChampion = new Map<string, { id: number; rank: number; tier: number }[]>();
+  let unmatched = 0;
+  const setTier = db.prepare('UPDATE decks SET meta_tier = ? WHERE id = ?');
+  for (const deck of metaDecks) {
+    const cardNames = (
       db
         .prepare(
-          `SELECT DISTINCT c.name FROM decks d
-           JOIN deck_cards dc ON dc.deck_id = d.id
-           JOIN cards c ON c.id = dc.card_id
-           WHERE d.kind = 'meta' AND lower(COALESCE(c.type,'')) LIKE ?`,
+          'SELECT c.name FROM deck_cards dc JOIN cards c ON c.id = dc.card_id WHERE dc.deck_id = ?',
         )
-        .all(legendPattern) as { name: string }[]
-    ).map((r) => r.name),
-  );
-  const missing = all.filter((l) => !covered.has(l.name));
-  console.log(`[meta] champion coverage: ${covered.size}/${all.length}`);
+        .all(deck.id) as { name: string }[]
+    ).map((r) => normalizeName(r.name));
+    const match = deckTier(entries, cardNames, normalizeName(deck.name));
+    if (match) {
+      setTier.run(match.tier, deck.id);
+      const list = byChampion.get(match.slug) ?? [];
+      list.push({ id: deck.id, rank: deck.popularity_rank ?? 9999, tier: match.tier });
+      byChampion.set(match.slug, list);
+    } else {
+      setTier.run(null, deck.id);
+      unmatched++;
+    }
+  }
+
+  // Prune: tier-5 champions keep only their best-ranked deck.
+  let pruned = 0;
+  const deleteDeck = db.transaction((id: number) => {
+    db.prepare('DELETE FROM deck_cards WHERE deck_id = ?').run(id);
+    db.prepare('DELETE FROM decks WHERE id = ?').run(id);
+  });
+  for (const [, decks] of byChampion) {
+    if (decks[0]!.tier <= 4 || decks.length <= 1) continue;
+    const sorted = [...decks].sort((a, b) => a.rank - b.rank);
+    for (const extra of sorted.slice(1)) {
+      deleteDeck(extra.id);
+      pruned++;
+    }
+  }
+  if (pruned > 0) console.log(`[meta] pruned ${pruned} extra deck(s) of tier-5 champions`);
+  if (unmatched > 0) {
+    console.log(`[meta] ${unmatched} deck(s) matched no tier-list champion (kept, unranked)`);
+  }
+
+  // Coverage against THE tier list (the champions that matter).
+  console.log('[meta] tier-list coverage:');
+  const missing: string[] = [];
+  for (const entry of [...entries].sort((a, b) => a.tier - b.tier)) {
+    const count = byChampion.get(entry.slug)?.length ?? 0;
+    console.log(`  T${entry.tier} ${entry.slug.padEnd(34)} ${count} deck(s)${count === 0 ? '  ← MISSING' : ''}`);
+    if (count === 0) missing.push(entry.slug);
+  }
   if (missing.length > 0) {
-    console.log('[meta] champions with NO meta deck yet:');
-    for (const m of missing) console.log(`  - ${m.name}`);
     console.log(
-      '[meta] fill gaps by importing a deck URL per champion in the app, or re-run with a bigger --top / a champion-filtered PA listing via --url.',
+      '[meta] to fill the missing champions: import one PA deck URL each in the app ' +
+        '(Decks → + Import → Meta deck), then re-run this script to re-tier.',
     );
   }
-} else {
-  console.log("[meta] couldn't identify legend/champion card types — coverage report skipped");
+} catch (err) {
+  console.warn(`[meta] tier list unavailable: ${(err as Error).message} — decks left untiered`);
 }
 console.log('[meta] open the Buildable screen to see the ranking.');

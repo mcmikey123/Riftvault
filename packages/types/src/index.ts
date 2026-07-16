@@ -90,6 +90,7 @@ export interface Deck {
   source_url: string | null;
   archetype: string | null;
   popularity_rank: number | null;
+  meta_tier?: number | null;
   source_text: string;
   created_at: string;
   updated_at: string | null;
@@ -120,6 +121,8 @@ export interface DeckScore {
     kind: string;
     archetype: string | null;
     popularity_rank: number | null;
+    /** riftbound.gg meta tier (1 best); null when unrated. */
+    meta_tier?: number | null;
     source_url: string | null;
   };
   completion: number; // 0..1
